@@ -1,3 +1,8 @@
+"""
+场景生成器模块
+用于生成和管理剧本场景
+"""
+
 import json
 
 import Writer.LLMEditor
@@ -7,6 +12,13 @@ import Writer.Chapter.ChapterGenSummaryCheck
 import Writer.Prompts
 
 import Writer.Scene.ChapterByScene
+
+from ..Prompts import (
+    CHAPTER_GENERATION_STAGE1,
+    CHAPTER_GENERATION_STAGE2,
+    CHAPTER_GENERATION_STAGE3,
+    CHAPTER_GENERATION_STAGE4
+)
 
 def GenerateChapter(
     Interface,
@@ -349,3 +361,127 @@ def ReviseChapter(Interface, _Logger, _Chapter, _Feedback, _History: list = []):
     _Logger.Log("Done Revising Chapter", 5)
 
     return SummaryText, Messages
+
+class SceneGenerator:
+    """
+    场景生成器类
+    处理场景的生成和修改
+    """
+    
+    def __init__(self, llm_editor, logger):
+        """
+        初始化场景生成器
+        
+        参数:
+            llm_editor: LLM编辑器实例
+            logger: 日志记录器实例
+        """
+        self.llm = llm_editor
+        self.logger = logger
+        
+    def generate_chapter(self, chapter_num, outline, previous_chapters=None):
+        """
+        生成单个场景
+        
+        参数:
+            chapter_num (int): 场景编号
+            outline (str): 故事大纲
+            previous_chapters (list): 之前的场景列表
+            
+        返回:
+            str: 生成的场景内容
+        """
+        self.logger.log(f"开始生成第{chapter_num}场景", 4)
+        
+        # 第1阶段：生成基本情节
+        chapter = self._generate_stage1(chapter_num, outline, previous_chapters)
+        
+        # 第2阶段：添加角色发展
+        chapter = self._generate_stage2(chapter, chapter_num, outline)
+        
+        # 第3阶段：添加对话
+        chapter = self._generate_stage3(chapter, chapter_num, outline)
+        
+        # 第4阶段：最终润色
+        chapter = self._generate_stage4(chapter, outline)
+        
+        self.logger.log(f"第{chapter_num}场景生成完成", 4)
+        return chapter
+        
+    def _generate_stage1(self, chapter_num, outline, previous_chapters):
+        """
+        生成第1阶段：基本情节
+        
+        参数:
+            chapter_num (int): 场景编号
+            outline (str): 故事大纲
+            previous_chapters (list): 之前的场景
+            
+        返回:
+            str: 生成的内容
+        """
+        self.logger.log("生成基本情节", 5)
+        prompt = CHAPTER_GENERATION_STAGE1.format(
+            _ChapterNum=chapter_num,
+            _Outline=outline,
+            ChapterSuperlist=previous_chapters
+        )
+        return self.llm.generate(prompt, model="chapter_stage1")
+        
+    def _generate_stage2(self, chapter, chapter_num, outline):
+        """
+        生成第2阶段：角色发展
+        
+        参数:
+            chapter (str): 第1阶段的内容
+            chapter_num (int): 场景编号
+            outline (str): 故事大纲
+            
+        返回:
+            str: 生成的内容
+        """
+        self.logger.log("添加角色发展", 5)
+        prompt = CHAPTER_GENERATION_STAGE2.format(
+            _ChapterNum=chapter_num,
+            _Outline=outline,
+            Stage1Chapter=chapter
+        )
+        return self.llm.generate(prompt, model="chapter_stage2")
+        
+    def _generate_stage3(self, chapter, chapter_num, outline):
+        """
+        生成第3阶段：对话
+        
+        参数:
+            chapter (str): 第2阶段的内容
+            chapter_num (int): 场景编号
+            outline (str): 故事大纲
+            
+        返回:
+            str: 生成的内容
+        """
+        self.logger.log("添加对话", 5)
+        prompt = CHAPTER_GENERATION_STAGE3.format(
+            _ChapterNum=chapter_num,
+            _Outline=outline,
+            Stage2Chapter=chapter
+        )
+        return self.llm.generate(prompt, model="chapter_stage3")
+        
+    def _generate_stage4(self, chapter, outline):
+        """
+        生成第4阶段：最终润色
+        
+        参数:
+            chapter (str): 第3阶段的内容
+            outline (str): 故事大纲
+            
+        返回:
+            str: 生成的内容
+        """
+        self.logger.log("进行最终润色", 5)
+        prompt = CHAPTER_GENERATION_STAGE4.format(
+            _Outline=outline,
+            Stage3Chapter=chapter
+        )
+        return self.llm.generate(prompt, model="chapter_stage4")

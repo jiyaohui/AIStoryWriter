@@ -1,9 +1,15 @@
+"""
+大纲生成器模块
+用于生成和管理故事大纲
+"""
+
 import Writer.LLMEditor
 import Writer.PrintUtils
 import Writer.Config
 import Writer.Outline.StoryElements
 import Writer.Prompts
 
+from .Prompts import INITIAL_OUTLINE_PROMPT, OUTLINE_REVISION_PROMPT
 
 # We should probably do outline generation in stages, allowing us to go back and add foreshadowing, etc back to previous segments
 
@@ -111,3 +117,53 @@ def GeneratePerChapterOutline(Interface, _Logger, _Chapter, _Outline:str, _Histo
     _Logger.Log("Done Generating Outline For Chapter " + str(_Chapter), 5)
 
     return SummaryText, Messages
+
+
+class OutlineGenerator:
+    """
+    大纲生成器类
+    处理故事大纲的生成和修改
+    """
+    
+    def __init__(self, llm_editor):
+        """
+        初始化大纲生成器
+        
+        参数:
+            llm_editor: LLM编辑器实例
+        """
+        self.llm = llm_editor
+        
+    def generate_initial(self, prompt, elements):
+        """
+        生成初始大纲
+        
+        参数:
+            prompt (str): 故事提示
+            elements (str): 故事元素
+            
+        返回:
+            str: 生成的大纲
+        """
+        prompt = INITIAL_OUTLINE_PROMPT.format(
+            _OutlinePrompt=prompt,
+            StoryElements=elements
+        )
+        return self.llm.generate(prompt)
+        
+    def revise_outline(self, outline, feedback):
+        """
+        根据反馈修改大纲
+        
+        参数:
+            outline (str): 当前大纲
+            feedback (str): 修改反馈
+            
+        返回:
+            str: 修改后的大纲
+        """
+        prompt = OUTLINE_REVISION_PROMPT.format(
+            _Outline=outline,
+            _Feedback=feedback
+        )
+        return self.llm.generate(prompt)

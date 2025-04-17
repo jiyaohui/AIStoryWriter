@@ -5,6 +5,15 @@ import Writer.PrintUtils
 import Writer.Config
 import Writer.Prompts
 
+from ..Prompts import (
+    SUMMARY_CHECK_INTRO,
+    SUMMARY_CHECK_PROMPT,
+    SUMMARY_OUTLINE_INTRO,
+    SUMMARY_OUTLINE_PROMPT,
+    SUMMARY_COMPARE_INTRO,
+    SUMMARY_COMPARE_PROMPT
+)
+
 
 def LLMSummaryCheck(Interface, _Logger, _RefSummary: str, _Work: str):
     """
@@ -22,11 +31,11 @@ def LLMSummaryCheck(Interface, _Logger, _RefSummary: str, _Work: str):
     # Build Summariziation Langchain
     SummaryLangchain: list = []
     SummaryLangchain.append(
-        Interface.BuildSystemQuery(Writer.Prompts.SUMMARY_CHECK_INTRO)
+        Interface.BuildSystemQuery(SUMMARY_CHECK_INTRO)
     )
     SummaryLangchain.append(
         Interface.BuildUserQuery(
-            Writer.Prompts.SUMMARY_CHECK_PROMPT.format(_Work=_Work)
+            SUMMARY_CHECK_PROMPT.format(_Work=_Work)
         )
     )
     SummaryLangchain = Interface.SafeGenerateText(
@@ -37,11 +46,11 @@ def LLMSummaryCheck(Interface, _Logger, _RefSummary: str, _Work: str):
     # Now Summarize The Outline
     SummaryLangchain: list = []
     SummaryLangchain.append(
-        Interface.BuildSystemQuery(Writer.Prompts.SUMMARY_OUTLINE_INTRO)
+        Interface.BuildSystemQuery(SUMMARY_OUTLINE_INTRO)
     )
     SummaryLangchain.append(
         Interface.BuildUserQuery(
-            Writer.Prompts.SUMMARY_OUTLINE_PROMPT.format(_RefSummary=_RefSummary)
+            SUMMARY_OUTLINE_PROMPT.format(_RefSummary=_RefSummary)
         )
     )
     SummaryLangchain = Interface.SafeGenerateText(
@@ -52,11 +61,11 @@ def LLMSummaryCheck(Interface, _Logger, _RefSummary: str, _Work: str):
     # Now, generate a comparison JSON value.
     ComparisonLangchain: list = []
     ComparisonLangchain.append(
-        Interface.BuildSystemQuery(Writer.Prompts.SUMMARY_COMPARE_INTRO)
+        Interface.BuildSystemQuery(SUMMARY_COMPARE_INTRO)
     )
     ComparisonLangchain.append(
         Interface.BuildUserQuery(
-            Writer.Prompts.SUMMARY_COMPARE_PROMPT.format(
+            SUMMARY_COMPARE_PROMPT.format(
                 WorkSummary=WorkSummary, OutlineSummary=OutlineSummary
             )
         )
@@ -97,3 +106,83 @@ def LLMSummaryCheck(Interface, _Logger, _RefSummary: str, _Work: str):
                 _Format="json",
             )
             _Logger.Log("Done Asking LLM TO Revise JSON", 6)
+
+
+class ChapterSummaryChecker:
+    """
+    章节摘要检查器类
+    用于比较章节内容与大纲的一致性
+    """
+    
+    def __init__(self, llm_editor):
+        """
+        初始化摘要检查器
+        
+        参数:
+            llm_editor: LLM编辑器实例
+        """
+        self.llm = llm_editor
+        
+    def check_chapter(self, chapter, outline):
+        """
+        检查章节是否符合大纲
+        
+        参数:
+            chapter (str): 章节内容
+            outline (str): 大纲内容
+            
+        返回:
+            dict: 检查结果
+        """
+        # 获取章节摘要
+        chapter_summary = self._get_chapter_summary(chapter)
+        
+        # 获取大纲摘要
+        outline_summary = self._get_outline_summary(outline)
+        
+        # 比较两个摘要
+        return self._compare_summaries(chapter_summary, outline_summary)
+        
+    def _get_chapter_summary(self, chapter):
+        """
+        获取章节摘要
+        
+        参数:
+            chapter (str): 章节内容
+            
+        返回:
+            str: 章节摘要
+        """
+        prompt = SUMMARY_CHECK_PROMPT.format(_Work=chapter)
+        return self.llm.generate(prompt)
+        
+    def _get_outline_summary(self, outline):
+        """
+        获取大纲摘要
+        
+        参数:
+            outline (str): 大纲内容
+            
+        返回:
+            str: 大纲摘要
+        """
+        prompt = SUMMARY_OUTLINE_PROMPT.format(_RefSummary=outline)
+        return self.llm.generate(prompt)
+        
+    def _compare_summaries(self, chapter_summary, outline_summary):
+        """
+        比较章节摘要和大纲摘要
+        
+        参数:
+            chapter_summary (str): 章节摘要
+            outline_summary (str): 大纲摘要
+            
+        返回:
+            dict: 比较结果
+        """
+        prompt = SUMMARY_COMPARE_PROMPT.format(
+            WorkSummary=chapter_summary,
+            OutlineSummary=outline_summary
+        )
+        response = self.llm.generate(prompt, format="json")
+        return self.llm.parse_json_response(response)

@@ -1,10 +1,15 @@
+"""
+OpenRouter接口模块
+用于处理与OpenRouter API的交互
+"""
+
 import json, requests, time
 from typing import Any, List, Mapping, Optional, Literal, Union, TypedDict
 
 class OpenRouter:
-    """OpenRouter.
-    https://openrouter.ai/docs#models
-    https://openrouter.ai/docs#llm-parameters
+    """
+    OpenRouter接口类
+    管理与OpenRouter API的通信
     """
 
     Message_Type = TypedDict('Message', { 'role': Literal['user', 'assistant', 'system', 'tool'], 'content': str })
@@ -84,31 +89,15 @@ class OpenRouter:
             self.min_p = min_p 
             self.top_a = top_a 
 
-    def set_params(self,
-        max_tokens: Optional[int] | None = None,
-        presence_penalty: Optional[float] | None = None,
-        frequency_penalty: Optional[float] | None = None,
-        repetition_penalty: Optional[float] | None = None,
-        response_format: Optional[Mapping[str, str]] | None = None,
-        temperature: Optional[float] | None = None,
-        seed: Optional[int] | None = None,
-        top_k: Optional[int] | None = None,
-        top_p: Optional[float] | None = None,
-        min_p: Optional[float] | None = None,
-        top_a: Optional[float] | None = None,
-        ):
+    def set_params(self, **kwargs):
+        """
+        设置生成参数
+        
+        参数:
+            **kwargs: 参数键值对
+        """
+        self.params = kwargs
 
-        if max_tokens is not None: self.max_tokens = max_tokens
-        if presence_penalty is not None: self.presence_penalty = presence_penalty
-        if frequency_penalty is not None: self.frequency_penalty = frequency_penalty
-        if repetition_penalty is not None: self.repetition_penalty = repetition_penalty
-        if response_format is not None: self.response_format = response_format
-        if temperature is not None: self.temperature = temperature
-        if seed is not None: self.seed = seed
-        if top_k is not None: self.top_k = top_k
-        if top_p is not None: self.top_p = top_p
-        if min_p is not None: self.min_p = min_p
-        if top_a is not None: self.top_a = top_a
     def ensure_array(self,
             input_msg: List[Message_Type] | Message_Type
         ) -> List[Message_Type]:
@@ -117,83 +106,44 @@ class OpenRouter:
         else:
             return [input_msg]
 
-    def chat(self,
-            messages: Message_Type,
-            max_retries: int = 10,
-            seed: int = None
-    ):
-        messages = self.ensure_array(messages)
+    def chat(self, messages, seed=None):
+        """
+        发送聊天请求
+        
+        参数:
+            messages (list): 消息列表
+            seed (int): 随机种子
+            
+        返回:
+            str: API响应文本
+        """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            'HTTP-Referer': 'https://github.com/datacrystals/AIStoryWriter',
-            'X-Title': 'StoryForgeAI',
+            "Content-Type": "application/json"
         }
-        body={
+        
+        data = {
             "model": self.model,
-            "messages": messages,
-            "max_token": self.max_tokens,
-            "temperature": self.temperature,
-            "top_k": self.top_k,
-            "top_p": self.top_p,
-            "presence_penalty": self.presence_penalty,
-            "frequency_penalty": self.frequency_penalty,
-            "repetition_penalty": self.repetition_penalty,
-            "min_p": self.min_p,
-            "top_a": self.top_a,
-            "seed": self.seed if seed is None else seed,
-            "logit_bias": self.logit_bias,
-            "response_format": self.response_format,
-            "stop": self.stop,
-            "provider": self.provider,
-            "stream": False,
+            "messages": messages
         }
-
-        retries = 0
-        while retries < max_retries:
-            try:
-                response = requests.post(url=self.api_url, headers=headers, data=json.dumps(body), timeout=self.timeout, stream=False)
-                response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-                if 'choices' in response.json():
-                    # Return result from request
-                    return response.json()["choices"][0]["message"]["content"]
-                elif 'error' in response.json():
-                    print(f"Openrouter returns error '{response.json()['error']['code']}' with message '{response.json()['error']['message']}', retry attempt {retries + 1}.")
-                    if response.json()['error']['code'] == 400:
-                        print("Bad Request (invalid or missing params, CORS)")
-                    if response.json()['error']['code'] == 401:
-                        raise Exception ("Invalid credentials (OAuth session expired, disabled/invalid API key)")
-                    if response.json()['error']['code'] == 402:
-                        raise Exception ("Your account or API key has insufficient credits. Add more credits and retry the request.")   
-                    if response.json()['error']['code'] == 403:
-                        print("Your chosen model requires moderation and your input was flagged")
-                    if response.json()['error']['code'] == 408:
-                        print("Your request timed out")
-                    if response.json()['error']['code'] == 429:
-                        print("You are being rate limited")
-                        print("Waiting 10 seconds")
-                        time.sleep(10)
-                    if response.json()['error']['code'] == 502:
-                        print("Your chosen model is down or we received an invalid response from it")
-                    if response.json()['error']['code'] == 503:
-                        print("There is no available model provider that meets your routing requirements")
-                else:
-                    from pprint import pprint
-                    print(f"Response without error but missing choices, retry attempt {retries + 1}.")
-                    pprint(response.json())
-            except requests.exceptions.HTTPError as http_err:
-                # HTTP error status code
-                print(f"HTTP error occurred: '{http_err}' - Status Code: '{http_err.response.status_code}', retry attempt {retries + 1}.")
-                # Funny Cloudflare being funny.
-                # This is a lie: https://community.cloudflare.com/t/community-tip-fixing-error-524-a-timeout-occurred/42342
-                if http_err.response.status_code == 524:
-                    time.sleep(10)
-            except (requests.exceptions.Timeout, requests.exceptions.TooManyRedirects) as err:
-                # timeouts and redirects
-                print(f"Retry attempt {retries + 1} after error: '{err}'")
-            except requests.exceptions.RequestException as req_err:
-                # any other request errors that haven't been caught by the previous except blocks
-                print(f"An error occurred while making the request: '{req_err}', retry attempt {retries + 1}.")
-            except Exception as e:
-                # all other exceptions
-                print(f"An unexpected error occurred: '{e}', retry attempt {retries + 1}.")
-            retries += 1
+        
+        if seed is not None:
+            data["seed"] = seed
+            
+        if self.params:
+            data.update(self.params)
+            
+        response = requests.post(
+            f"{self.api_url}/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"API请求失败: {response.text}")
+            
+        try:
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
+        except Exception as e:
+            raise Exception(f"解析API响应失败: {str(e)}")

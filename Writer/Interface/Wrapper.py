@@ -1,3 +1,8 @@
+"""
+接口包装器模块
+用于封装和统一管理不同LLM接口的访问
+"""
+
 import Writer.Config
 import dotenv
 import inspect
@@ -14,25 +19,47 @@ dotenv.load_dotenv()
 
 
 class Interface:
+    """
+    接口类
+    提供统一的接口来访问不同的LLM服务
+    """
 
     def __init__(
         self,
         Models: list = [],
     ):
+        """
+        初始化接口
+        
+        参数:
+            Models (list): 要加载的模型列表
+        """
         self.Clients: dict = {}
         self.History = []
         self.LoadModels(Models)
 
     def ensure_package_is_installed(self, package_name):
+        """
+        确保所需的Python包已安装
+        
+        参数:
+            package_name (str): 包名
+        """
         try:
             importlib.import_module(package_name)
         except ImportError:
-            print(f"Package {package_name} not found. Installing...")
+            print(f"未找到{package_name}包，正在安装...")
             subprocess.check_call(
                 [sys.executable, "-m", "pip", "install", package_name]
             )
 
     def LoadModels(self, Models: list):
+        """
+        加载模型
+        
+        参数:
+            Models (list): 要加载的模型列表
+        """
         for Model in Models:
             if Model in self.Clients:
                 continue
@@ -40,23 +67,22 @@ class Interface:
                 Provider, ProviderModel, ModelHost, ModelOptions = (
                     self.GetModelAndProvider(Model)
                 )
-                print(f"DEBUG: Loading Model {ProviderModel} from {Provider}@{ModelHost}")
+                print(f"调试: 正在从{Provider}@{ModelHost}加载模型{ProviderModel}")
 
                 if Provider == "ollama":
-                    # Get ollama models (only once)
+                    # 获取ollama模型(仅一次)
                     self.ensure_package_is_installed("ollama")
                     import ollama
 
                     OllamaHost = ModelHost if ModelHost is not None else None
 
-                    # Check if availabel via ollama.show(Model)
-                    # check if the model is in the list of models
+                    # 检查模型是否可用
                     try:
                         ollama.Client(host=OllamaHost).show(ProviderModel)
                         pass
                     except Exception as e:
                         print(
-                            f"Model {ProviderModel} not found in Ollama models. Downloading..."
+                            f"在Ollama模型中未找到{ProviderModel}，正在下载..."
                         )
                         OllamaDownloadStream = ollama.Client(host=OllamaHost).pull(
                             ProviderModel, stream=True
@@ -69,7 +95,7 @@ class Interface:
                                 completedSize = chunk["completed"] / 1024**3
                                 totalSize = chunk["total"] / 1024**3
                                 print(
-                                    f"Downloading {ProviderModel}: {OllamaDownloadProgress * 100:.2f}% ({completedSize:.3f}GB/{totalSize:.3f}GB)",
+                                    f"正在下载{ProviderModel}: {OllamaDownloadProgress * 100:.2f}% ({completedSize:.3f}GB/{totalSize:.3f}GB)",
                                     end="\r",
                                 )
                             else:
@@ -77,16 +103,16 @@ class Interface:
                         print("\n\n\n")
 
                     self.Clients[Model] = ollama.Client(host=OllamaHost)
-                    print(f"OLLAMA Host is '{OllamaHost}'")
+                    print(f"OLLAMA主机为'{OllamaHost}'")
 
                 elif Provider == "google":
-                    # Validate Google API Key
+                    # 验证Google API密钥
                     if (
                         not "GOOGLE_API_KEY" in os.environ
                         or os.environ["GOOGLE_API_KEY"] == ""
                     ):
                         raise Exception(
-                            "GOOGLE_API_KEY not found in environment variables"
+                            "环境变量中未找到GOOGLE_API_KEY"
                         )
                     self.ensure_package_is_installed("google-generativeai")
                     import google.generativeai as genai
@@ -97,7 +123,7 @@ class Interface:
                     )
 
                 elif Provider == "openai":
-                    raise NotImplementedError("OpenAI API not supported")
+                    raise NotImplementedError("不支持OpenAI API")
 
                 elif Provider == "openrouter":
                     if (
@@ -105,7 +131,7 @@ class Interface:
                         or os.environ["OPENROUTER_API_KEY"] == ""
                     ):
                         raise Exception(
-                            "OPENROUTER_API_KEY not found in environment variables"
+                            "环境变量中未找到OPENROUTER_API_KEY"
                         )
                     from Writer.Interface.OpenRouter import OpenRouter
 
@@ -114,11 +140,11 @@ class Interface:
                     )
 
                 elif Provider == "Anthropic":
-                    raise NotImplementedError("Anthropic API not supported")
+                    raise NotImplementedError("不支持Anthropic API")
 
                 else:
-                    print(f"Warning, ")
-                    raise Exception(f"Model Provider {Provider} for {Model} not found")
+                    print(f"警告, ")
+                    raise Exception(f"未找到{Model}的模型提供者{Provider}")
 
     def SafeGenerateText(
         self,
@@ -130,10 +156,17 @@ class Interface:
         _MinWordCount: int = 1
         ):
         """
-        This function guarantees that the output will not be whitespace.
+        安全地生成文本，确保输出不为空
+        
+        参数:
+            _Logger: 日志记录器
+            _Messages: 消息历史
+            _Model: 模型名称
+            _SeedOverride: 随机种子覆盖值
+            _Format: 期望的输出格式
+            _MinWordCount: 最小字数要求
         """
-
-        # Strip Empty Messages
+        # 删除空消息
         for i in range(len(_Messages) - 1, 0, -1):
             if _Messages[i]["content"].strip() == "":
                 del _Messages[i]
@@ -142,11 +175,11 @@ class Interface:
 
         while (self.GetLastMessageText(NewMsg).strip() == "") or (len(self.GetLastMessageText(NewMsg).split(" ")) < _MinWordCount):
             if self.GetLastMessageText(NewMsg).strip() == "":
-                _Logger.Log("SafeGenerateText: Generation Failed Due To Empty (Whitespace) Response, Reattempting Output", 7)
+                _Logger.Log("SafeGenerateText: 生成失败，响应为空(空白)，正在重试", 7)
             elif (len(self.GetLastMessageText(NewMsg).split(" ")) < _MinWordCount):
-                _Logger.Log(f"SafeGenerateText: Generation Failed Due To Short Response ({len(self.GetLastMessageText(NewMsg).split(' '))}, min is {_MinWordCount}), Reattempting Output", 7)
+                _Logger.Log(f"SafeGenerateText: 生成失败，响应过短({len(self.GetLastMessageText(NewMsg).split(' '))}，最小要求{_MinWordCount})，正在重试", 7)
 
-            del _Messages[-1] # Remove failed attempt
+            del _Messages[-1] # 删除失败的尝试
             NewMsg = self.ChatAndStreamResponse(_Logger, _Messages, _Model, random.randint(0, 99999), _Format)
 
         return NewMsg
